@@ -1,0 +1,105 @@
+resource_types: 
+  - name: "rocket-notification"
+    type: "docker-image"
+    source: 
+      repository: "kkmbal/rocket-notify-resource"
+      tag: latest
+resources: 
+  - name: "git-pet"
+    type: git
+    source: 
+      branch: master
+      password: "2802"
+      uri: "http://git.v254.k-cloud.kr:3000/ci/spring-petclinic.git"
+      username: "ychangkim@crossent.com"
+  - name: "send-chat"
+    type: "rocket-notification"
+    source: 
+      url: "https://chat.paasxpert.com"
+      user: "ychangkim@crossent.com"
+      password: "ochao2802"
+  - name: version
+    type: semver
+    source: 
+      branch: master
+      driver: git
+      file: version
+      password: "2802"
+      uri: "http://git.v254.k-cloud.kr:3000/ci/version.git"
+      username: "ychangkim@crossent.com"
+  - name: "git-tag"
+    type: git
+    source: 
+      branch: master
+      password: "2802"
+      uri: "http://git.v254.k-cloud.kr:3000/ci/spring-petclinic.git"
+      username: "ychangkim@crossent.com"
+  - name: "cf-push"
+    type: cf
+    source: 
+      api: "<<CF_API>>"
+      organization: "<<CF_ORG>>"
+      password: "<<password>>"
+      skip_cert_check: true
+      space: "<<CF_SPACE>>"
+      username: "<<username>>"
+jobs: 
+  - name: build
+    plan: 
+      - get: "git-pet"
+        resource: "git-pet"
+        trigger: true
+        params: 
+      - task: build
+        file: "git-pet/ci/mvn_build_test.yml"
+        privileged: true
+        params: 
+          GOAL: compile
+          TEST_SKIP: true
+        on_failure: 
+          put: "send-chat"
+          params: 
+            channel: "#ci-test"
+            message: "build error"
+  - name: release
+    plan: 
+      - get: "git-pet"
+        resource: "git-pet"
+        trigger: true
+        passed: 
+          - build
+        params: 
+      - get: version
+        resource: version
+        params: 
+          bump: patch
+      - put: version
+        resource: version
+        params: 
+          file: "version/version"
+      - put: "git-tag"
+        resource: "git-tag"
+        params: 
+          repository: "git-pet"
+          tag: "version/version"
+  - name: deploy
+    plan: 
+      - get: "git-tag"
+        resource: "git-tag"
+        trigger: true
+        passed: 
+          - release
+        params: 
+      - task: package
+        file: "git-tag/ci/mvn_package.yml"
+        privileged: true
+        on_failure: 
+          put: "send-chat"
+          params: 
+            channel: "#ci-test"
+            message: "package error"
+      - put: "cf-push"
+        resource: "cf-push"
+        params: 
+          manifest: "git-tag/ci/manifest.yml"
+          path: "deploy/spring-petclinic-1.5.1.jar"
