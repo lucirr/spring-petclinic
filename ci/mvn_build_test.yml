@@ -1,0 +1,13 @@
+---
+platform: linux
+
+image_resource:
+  type: docker-image
+  source:
+    repository: kkmbal/maven-build
+
+inputs:
+- name: git-pet
+
+run:
+  path: git-pet/ci/mvn_build_test.sh
